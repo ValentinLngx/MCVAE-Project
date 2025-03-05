@@ -119,5 +119,5 @@ if __name__ == '__main__':
 
     trainer = pl.Trainer.from_argparse_args(args, logger=tb_logger, fast_dev_run=False,
                                             terminate_on_nan=automatic_optimization) #,automatic_optimization=automatic_optimization)
-    pl.Trainer()
+    pl.Trainer(gpus=1)
     trainer.fit(model, train_dataloader=train_loader, val_dataloaders=val_loader)
