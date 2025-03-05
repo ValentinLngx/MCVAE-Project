@@ -6,6 +6,13 @@ from pytorch_lightning import loggers as pl_loggers
 from vaes import VAE, IWAE, AMCVAE, LMCVAE, VAE_with_flows
 from utils import make_dataloaders, get_activations, str2bool
 
+import torch
+print("PyTorch version:", torch.__version__)
+print("CUDA version:", torch.version.cuda)
+print("CUDA available:", torch.cuda.is_available())
+
+
+
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
