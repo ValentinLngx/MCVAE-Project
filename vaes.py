@@ -151,56 +151,34 @@ class Base(pl.LightningModule):
 
         return likelihood
 
-    def validation_epoch_end(self, outputs):
-        # Tensorboard logging
-        if "val_loss" in outputs[0].keys():  # if we have single loss
-            val_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-            self.logger.experiment.add_scalar(f'{self.dataset}/{self.name}/avg_val_loss', val_loss, self.current_epoch)
-        else:  # if we have separate losses for encoder and decoder
-            val_loss = torch.stack([x['val_loss_enc'] for x in outputs]).mean()
-            val_loss_dec = torch.stack([x['val_loss_dec'] for x in outputs]).mean()
-            self.logger.experiment.add_scalar(f'{self.dataset}/{self.name}/avg_val_loss_enc', val_loss,
-                                              self.current_epoch)
-            self.logger.experiment.add_scalar(f'{self.dataset}/{self.name}/avg_val_loss_dec', val_loss_dec,
-                                              self.current_epoch)
-            if "val_loss_score_match" in outputs[0].keys():  # if we have score matching loss
-                val_loss_score_match = torch.stack([x['val_loss_score_match'] for x in outputs]).mean()
-                self.logger.experiment.add_scalar(f'{self.dataset}/{self.name}/avg_val_loss_score_match',
-                                                  val_loss_score_match,
-                                                  self.current_epoch)
+    def validation_step(self, batch, batch_idx):
+        output = self.step(batch)
+        d = {"val_loss": output[0]}
+        if self.current_epoch % 10 == 9:
+            nll = self.evaluate_nll(
+                batch=batch,
+                beta=torch.linspace(0., 1., 5, device=batch[0].device, dtype=torch.float32)
+            )
+            d.update({"nll": nll})
+        # Store outputs for later aggregation
+        if not hasattr(self, 'validation_outputs'):
+            self.validation_outputs = []
+        self.validation_outputs.append(d)
+        return d
 
-        if "acceptance_rate" in outputs[0].keys():  # if we have acceptance, we plot the mean after each transition
-            acceptance = torch.stack([x['acceptance_rate'] for x in outputs]).mean(0)
-            for i in range(len(acceptance)):
-                self.logger.experiment.add_scalar(f'{self.dataset}/{self.name}/acceptance_rate_{i}',
-                                                  acceptance[i].item(),
-                                                  self.current_epoch)
+    def on_validation_epoch_end(self):
+        # Make sure there are outputs stored
+        if hasattr(self, 'validation_outputs') and len(self.validation_outputs) > 0:
+            outputs = self.validation_outputs
+            # Example aggregation logic (adjust as needed)
+            if "val_loss" in outputs[0].keys():
+                val_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+                self.logger.experiment.add_scalar(f'{self.dataset}/{self.name}/avg_val_loss', val_loss, self.current_epoch)
+            # ... add additional logging if needed ...
+            # Clear the stored outputs for the next epoch
+            self.validation_outputs.clear()
 
-        if "nll" in outputs[0].keys():  # if we have nll (typically at epoch 49), we plot it
-            nll = torch.stack([x['nll'] for x in outputs]).mean(0)
-            self.logger.experiment.add_scalar(f'{self.dataset}/{self.name}/nll', nll,
-                                              self.current_epoch)
 
-        if hasattr(self, 'transitions'):  # if we have transitions, we show median stepsize
-            for i in range(len(self.transitions)):
-                self.logger.experiment.add_scalar(f'{self.dataset}/{self.name}/median_step_size_{i}',
-                                                  np.median(self.transitions[i].step_size.cpu().detach().numpy()),
-                                                  self.current_epoch)
-
-        if self.dataset.lower() in ['cifar', 'mnist', 'omniglot', 'celeba']:
-            if self.dataset.lower().find('cifar') > -1:
-                x_hat = self(self.random_z.to(val_loss.device)).view((-1, 3, 32, 32)).clamp(0., 1.)
-                # x_hat = torch.sigmoid(self(self.random_z.to(val_loss.device))).view((-1, 3, 32, 32))
-            elif self.dataset.lower().find('mnist') > -1:
-                x_hat = torch.sigmoid(self(self.random_z.to(val_loss.device))).view((-1, 1, 28, 28))
-            elif self.dataset.lower().find('omniglot') > -1:
-                x_hat = torch.sigmoid(self(self.random_z.to(val_loss.device))).view((-1, 1, 105, 105))
-            elif self.dataset.lower().find('celeba') > -1:
-                x_hat = self(self.random_z.to(val_loss.device)).view((-1, 3, 64, 64)).clamp(0., 1.)
-            grid = torchvision.utils.make_grid(x_hat)
-            self.logger.experiment.add_image(f'{self.dataset}/{self.name}/image', grid, self.current_epoch)
-        else:
-            pass
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=1e-3)

@@ -7,15 +7,11 @@ from vaes import VAE, IWAE, AMCVAE, LMCVAE, VAE_with_flows
 from utils import make_dataloaders, get_activations, str2bool
 
 import torch
-print("PyTorch version:", torch.__version__)
-print("CUDA version:", torch.version.cuda)
-print("CUDA available:", torch.cuda.is_available())
-
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser = pl.Trainer.add_argparse_args(parser)
+    #parser = pl.Trainer.add_argparse_args(parser)
     tb_logger = pl_loggers.TensorBoardLogger('lightning_logs/')
 
     parser.add_argument("--model", default="VAE",
@@ -70,10 +66,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(args)
 
-    # *** Remove unsupported arguments ***
-    if hasattr(args, "automatic_optimization"):
-        del args.automatic_optimization
-
     kwargs = {'num_workers': 20, 'pin_memory': True}
     train_loader, val_loader = make_dataloaders(dataset=args.dataset,
                                                 batch_size=args.batch_size,
@@ -124,7 +116,20 @@ if __name__ == '__main__':
     args.gradient_clip_val = args.grad_clip_val
     automatic_optimization = (args.grad_skip_val == 0.) and (args.gradient_clip_val == 0.)
 
-    trainer = pl.Trainer.from_argparse_args(args, logger=tb_logger, fast_dev_run=False,
-                                            terminate_on_nan=automatic_optimization) #,automatic_optimization=automatic_optimization)
-    pl.Trainer(gpus=1)
-    trainer.fit(model, train_dataloader=train_loader, val_dataloaders=val_loader)
+    trainer_kwargs = {
+        "logger": tb_logger,
+        "fast_dev_run": False,
+        "terminate_on_nan": automatic_optimization,
+        "accelerator": "gpu",  # use the GPU accelerator
+        "devices": 1,          # number of GPUs to use
+        # Add any other Trainer parameters here
+    }
+    trainer_kwargs = {
+        "logger": tb_logger,
+        "fast_dev_run": False,
+        "accelerator": "gpu",
+        "devices": 1,
+        # "terminate_on_nan": automatic_optimization,  # Remove or comment out this line
+    }
+    trainer = pl.Trainer(**trainer_kwargs)
+    trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
