@@ -63,6 +63,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(args)
 
+    # *** Remove unsupported arguments ***
+    if hasattr(args, "automatic_optimization"):
+        del args.automatic_optimization
+
     kwargs = {'num_workers': 20, 'pin_memory': True}
     train_loader, val_loader = make_dataloaders(dataset=args.dataset,
                                                 batch_size=args.batch_size,
@@ -114,7 +118,6 @@ if __name__ == '__main__':
     automatic_optimization = (args.grad_skip_val == 0.) and (args.gradient_clip_val == 0.)
 
     trainer = pl.Trainer.from_argparse_args(args, logger=tb_logger, fast_dev_run=False,
-                                            terminate_on_nan=automatic_optimization,
-                                            automatic_optimization=automatic_optimization)
+                                            terminate_on_nan=automatic_optimization) #,automatic_optimization=automatic_optimization)
     pl.Trainer()
     trainer.fit(model, train_dataloader=train_loader, val_dataloaders=val_loader)

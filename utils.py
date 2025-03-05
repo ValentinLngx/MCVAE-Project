@@ -25,12 +25,9 @@ class MyDataset(Dataset):
     def __init__(self, data, binarize=False, reshape=False):
         super(MyDataset, self).__init__()
         if isinstance(data, list):
-            if binarize:  # it is mnistlike datasets
-                self.data = data[0]
-                self.labels = data[1]
-            else:
-                self.data = data
-                self.labels = None
+            # Always assume the first element is the data and the second element (if available) is labels
+            self.data = data[0]
+            self.labels = data[1] if len(data) > 1 else None
         else:
             self.data = data
             self.labels = None
