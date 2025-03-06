@@ -66,7 +66,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(args)
 
-    kwargs = {'num_workers': 20, 'pin_memory': True}
+    kwargs = {'num_workers': 10, 'pin_memory': True}
     train_loader, val_loader = make_dataloaders(dataset=args.dataset,
                                                 batch_size=args.batch_size,
                                                 val_batch_size=args.val_batch_size,
@@ -119,16 +119,9 @@ if __name__ == '__main__':
     trainer_kwargs = {
         "logger": tb_logger,
         "fast_dev_run": False,
-        "terminate_on_nan": automatic_optimization,
-        "accelerator": "gpu",  # use the GPU accelerator
-        "devices": 1,          # number of GPUs to use
-        # Add any other Trainer parameters here
-    }
-    trainer_kwargs = {
-        "logger": tb_logger,
-        "fast_dev_run": False,
         "accelerator": "gpu",
         "devices": 1,
+        "max_epochs": 1
         # "terminate_on_nan": automatic_optimization,  # Remove or comment out this line
     }
     trainer = pl.Trainer(**trainer_kwargs)
