@@ -7,7 +7,7 @@ import torch.nn as nn
 from pytorch_lightning import loggers as pl_loggers
 from torch.utils.data import Dataset, DataLoader
 
-from models.vaes import Base, VAE, IWAE, AMCVAE, LMCVAE, VAE_with_flows
+from vaes import Base, VAE, IWAE, AMCVAE, LMCVAE, VAE_with_flows
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -178,10 +178,10 @@ class ToyDecoder(nn.Module):
                 torch.sqrt(torch.sum(torch.pow(x, 2), dim=1, keepdim=True)) + self.beta)
 
 
-def run_trainer(model, num_epoches=21):
+def run_trainer(model, num_epoches=2):
     tb_logger = pl_loggers.TensorBoardLogger('lightning_logs/')
-    trainer = pl.Trainer(logger=tb_logger, fast_dev_run=False, max_epochs=num_epoches, automatic_optimization=True, )
-    trainer.fit(model, train_dataloader=train_loader, val_dataloaders=val_loader)
+    trainer = pl.Trainer(logger=tb_logger, fast_dev_run=False, max_epochs=num_epoches)#, automatic_optimization=True, )
+    trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
 
 def compute_discrepancy(model):
@@ -275,7 +275,7 @@ if __name__ == '__main__':
         full_betas['VAE'].append(get_beta(vae).cpu().item())
 
         print('Flows')
-        run_trainer(flows_vae, num_epoches=31)
+        run_trainer(flows_vae, num_epoches=3)
         full_results['RealNVP'].append(compute_discrepancy(flows_vae).cpu().item())
         full_alphas['RealNVP'].append(get_alpha(flows_vae).cpu().item())
         full_betas['RealNVP'].append(get_beta(flows_vae).cpu().item())

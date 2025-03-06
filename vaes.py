@@ -293,8 +293,7 @@ class IWAE(Base):
 class VAE_with_flows(Base):
     def __init__(self, flow_type, num_flows, **kwargs):
         super().__init__(**kwargs)
-        self.Flow = NormFlow(flow_type=flow_type, num_flows=num_flows, hidden_dim=self.hidden_dim, need_permute=True,
-                             hidden_dims=[self.hidden_dim, self.hidden_dim])
+        self.Flow = NormFlow(flow_type=flow_type, num_flows=num_flows, hidden_dim=self.hidden_dim, need_permute=True)#,hidden_dims=[self.hidden_dim, self.hidden_dim])
         self.save_hyperparameters()
 
     def configure_optimizers(self):
@@ -317,7 +316,8 @@ class VAE_with_flows(Base):
         z, mu, logvar = self.enc_rep(x, self.num_samples)
         x = repeat_data(x, self.num_samples)
         output = self.Flow(z)
-        z_transformed, log_jac = output["z_new"], output["aggregated_log_jac"]
+        z_transformed, log_jac = output[0], output[1]
+        #z_transformed, log_jac = output["z_new"], output["aggregated_log_jac"]
         x_hat = self(z_transformed)
         loss = self.loss_function(recon_x=x_hat, x=x, mu=mu, logvar=logvar, z=z, z_transformed=z_transformed,
                                   log_jac=log_jac)
