@@ -165,4 +165,5 @@ if __name__ == '__main__':
     plt.imshow(grid.permute(1, 2, 0).cpu().numpy())
     plt.title("Generated MNIST Samples")
     plt.axis("off")
+    plt.savefig("generated_samples.png")
     plt.show()
