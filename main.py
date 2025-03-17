@@ -2,23 +2,24 @@ from argparse import ArgumentParser
 
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
+import matplotlib.pyplot as plt
+import torchvision.utils as vutils
 
-from vaes import VAE, IWAE, AMCVAE, LMCVAE, VAE_with_flows
+from vaes import VAE, IWAE, AMCVAE, LMCVAE, VAE_with_flows, FMCVAE
 from utils import make_dataloaders, get_activations, str2bool
 
 import torch
-
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     #parser = pl.Trainer.add_argparse_args(parser)
     tb_logger = pl_loggers.TensorBoardLogger('lightning_logs/')
 
-    parser.add_argument("--model", default="VAE",
-                        choices=["VAE", "IWAE", "AMCVAE", "LMCVAE", "VAE_with_flows"])
+    parser.add_argument("--model", default="FMCVAE",
+                        choices=["VAE", "IWAE", "AMCVAE", "LMCVAE", "VAE_with_flows", "FMCVAE"])
 
     ## Dataset params
-    parser.add_argument("--dataset", default='mnist', choices=['mnist', 'fashionmnist', 'cifar', 'omniglot', 'celeba'])
+    parser.add_argument("--dataset", default='fashionmnist', choices=['mnist', 'fashionmnist', 'cifar', 'omniglot', 'celeba'])
     parser.add_argument("--binarize", type=str2bool, default=False)
     ## Training parameters
     parser.add_argument("--batch_size", default=32, type=int)
@@ -30,7 +31,7 @@ if __name__ == '__main__':
     parser.add_argument("--hidden_dim", default=64, type=int)
     parser.add_argument("--num_samples", default=1, type=int)
     parser.add_argument("--act_func", default="gelu",
-                        choices=["relu", "leakyrelu", "tanh", "logsigmoid", "logsoftmax", "softplus", "gelu"])
+                        choices=["relu", "leakyrelu", "tanh", "logsigmoid", "logsoftmax", "softplus", "gelu", "silu"])
     parser.add_argument("--net_type", choices=["fc", "conv"], type=str, default="conv")
 
     ## Specific parameters
@@ -60,19 +61,22 @@ if __name__ == '__main__':
     parser.add_argument("--sigma", type=float, default=1.)
 
     parser.add_argument("--num_flows", type=int, default=1)
+    parser.add_argument("--Kprime", type=int, default=5,
+                    help="Number of AIS/SIS steps for FMCVAE")
 
     act_func = get_activations()
 
     args = parser.parse_args()
     print(args)
 
-    kwargs = {'num_workers': 10, 'pin_memory': True}
+    kwargs = {'num_workers': 8, 'pin_memory': True}
     train_loader, val_loader = make_dataloaders(dataset=args.dataset,
                                                 batch_size=args.batch_size,
                                                 val_batch_size=args.val_batch_size,
                                                 binarize=args.binarize,
                                                 **kwargs)
     image_shape = train_loader.dataset.shape_size
+    
     if args.model == "VAE":
         model = VAE(shape=image_shape, act_func=act_func[args.act_func],
                     num_samples=args.num_samples, hidden_dim=args.hidden_dim,
@@ -110,6 +114,17 @@ if __name__ == '__main__':
                        variance_sensitive_step=args.variance_sensitive_step,
                        ula_skip_threshold=args.ula_skip_threshold, annealing_scheme=args.annealing_scheme,
                        specific_likelihood=args.specific_likelihood, sigma=args.sigma)
+    elif args.model == "FMCVAE":
+        # Instantiate FMCVAE with Kprime (short AIS/SIS steps) and a given ULA step size.
+        # Here, we reuse args.step_size as the ULA step size.
+        model = FMCVAE(shape=image_shape, act_func=act_func[args.act_func], num_samples=args.num_samples,
+                       hidden_dim=args.hidden_dim, name=args.model, flow_type="RealNVP",
+                       num_flows=args.num_flows,
+                       net_type=args.net_type, dataset=args.dataset,
+                       specific_likelihood=args.specific_likelihood,
+                       sigma=args.sigma,
+                       Kprime=args.Kprime,
+                       ula_step_size=args.step_size)
     else:
         raise ValueError
 
@@ -121,8 +136,33 @@ if __name__ == '__main__':
         "fast_dev_run": False,
         "accelerator": "gpu",
         "devices": 1,
-        "max_epochs": 1
+        "max_epochs": 10  # 2 useless, try 20 maybe
         # "terminate_on_nan": automatic_optimization,  # Remove or comment out this line
     }
     trainer = pl.Trainer(**trainer_kwargs)
     trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+
+    # Set model to evaluation mode
+    model.eval()
+
+    # Number of samples to generate
+    n_samples = 16  # adjust as needed
+
+    # Sample from the latent space (assume model.hidden_dim is the latent dimension)
+    z = torch.randn(n_samples, model.hidden_dim).to(next(model.parameters()).device)
+
+    # Generate images by passing z through the model (or model.decoder, if you have a dedicated decoder)
+    with torch.no_grad():
+        generated_images = model(z)
+        # If the model outputs logits, apply a sigmoid activation to get values in [0,1]
+        generated_images = torch.sigmoid(generated_images)
+
+    # Create a grid of images
+    grid = vutils.make_grid(generated_images, nrow=4, normalize=True, scale_each=True)
+
+    # Display the grid using matplotlib
+    plt.figure(figsize=(8, 8))
+    plt.imshow(grid.permute(1, 2, 0).cpu().numpy())
+    plt.title("Generated MNIST Samples")
+    plt.axis("off")
+    plt.show()

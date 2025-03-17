@@ -83,7 +83,8 @@ class Base(pl.LightningModule):
 
     def reparameterize(self, mu, logvar):
         # Reparametrization trick
-        std = torch.exp(0.5 * logvar)
+        #std = torch.exp(0.5 * logvar)
+        std = torch.exp(0.5 * torch.clamp(logvar, min=-10, max=10)) + 1e-8
         eps = torch.randn_like(std)
         return mu + eps * std
 
@@ -181,7 +182,7 @@ class Base(pl.LightningModule):
 
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-3)
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
 
     def training_step(self, batch, batch_idx):
         output = self.step(batch)
@@ -297,7 +298,7 @@ class VAE_with_flows(Base):
         self.save_hyperparameters()
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-3)
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
 
     def loss_function(self, recon_x, x, mu, logvar, z, z_transformed, log_jac):
         batch_size = mu.shape[0] // self.num_samples
@@ -383,7 +384,7 @@ class BaseMCMC(Base):
         # ## If we are using cloned decoder to approximate the true one, we add its params to inference optimizer
         # if self.use_cloned_decoder:
         #     all_params += list(self.cloned_decoder.parameters())
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20, 30], gamma=0.25)
         # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
         # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=10, epochs=5)
@@ -760,3 +761,59 @@ class LMCVAE(BaseMCMC):
                                     beta=torch.linspace(0., 1., 5, device=batch[0].device, dtype=torch.float32))
             d.update({"nll": nll})
         return d
+
+
+class FMCVAE(VAE_with_flows):
+    """
+    Flow-Augmented Monte Carlo VAE (F-MCVAE)
+
+    This model first applies a normalizing flow (as in VAE_with_flows)
+    to the latent variable from the encoder, and then refines the sample
+    with a short AIS/SIS chain using a ULA sampler (with Kprime=5 steps by default).
+    """
+    def __init__(self, flow_type, num_flows, Kprime=5, ula_step_size=0.01, **kwargs):
+        super().__init__(flow_type=flow_type, num_flows=num_flows, **kwargs)
+        self.Kprime = Kprime
+        # Instantiate a ULA sampler (from your samplers module)
+        self.ula_sampler = ULA(step_size=ula_step_size, learnable=False)
+
+    def step(self, batch):
+        x, _ = batch
+        # Obtain latent samples from the encoder (with repetition for num_samples)
+        z, mu, logvar = self.enc_rep(x, self.num_samples)
+        x_rep = repeat_data(x, self.num_samples)
+
+        # --- Step 1: Apply the Normalizing Flow ---
+        flow_out = self.Flow(z)
+        z0 = flow_out[0]            # Flow-transformed latent variable
+        flow_log_det = flow_out[1]    # Log-determinant correction
+
+        # --- Step 2: Run a Short AIS/SIS Chain (Kprime steps) ---
+        z_chain = z0
+        init_logdensity = lambda z: torch.distributions.Normal(
+            loc=mu, 
+            scale=torch.exp(0.5 * logvar)
+        ).log_prob(z).sum(-1)
+        beta = torch.linspace(0., 1., self.Kprime + 2, device=x.device, dtype=torch.float32)
+        log_weight = (beta[1] - beta[0]) * (self.joint_logdensity()(z=z_chain, x=x_rep) - init_logdensity(z_chain))
+        
+        for i in range(1, self.Kprime + 1):
+            target = lambda z, x: (1. - beta[i]) * init_logdensity(z) + beta[i] * self.joint_logdensity()(z=z, x=x_rep)
+            # Get the transition output
+            transition_out = self.ula_sampler.make_transition(z=z_chain, x=x_rep, target=target)
+            # If a tuple is returned, extract the first element
+            if isinstance(transition_out, tuple):
+                z_chain = transition_out[0]
+            else:
+                z_chain = transition_out
+            log_weight = log_weight + (beta[i+1] - beta[i]) * (self.joint_logdensity()(z=z_chain, x=x_rep) - init_logdensity(z_chain))
+        
+        # --- Step 3: Compute Reconstruction and Loss ---
+        x_hat = self(z_chain)  # This calls self.forward -> self.decode
+        likelihood = self.get_likelihood(x_hat, x_rep)
+        KLD_term = -torch.mean(log_weight + flow_log_det)
+        loss = -torch.mean(likelihood) + KLD_term
+
+        return loss, x_hat, z_chain
+
+
