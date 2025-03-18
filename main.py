@@ -159,7 +159,7 @@ if __name__ == '__main__':
         "logger": tb_logger,
         "fast_dev_run": False,
         "accelerator": "gpu",
-        "devices": 1,
+        "devices": 4,
         "max_epochs": 30  # 2 useless, try 20 maybe
         # "terminate_on_nan": automatic_optimization,  # Remove or comment out this line
     }
