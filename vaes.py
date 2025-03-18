@@ -762,19 +762,23 @@ class LMCVAE(BaseMCMC):
             d.update({"nll": nll})
         return d
 
-
 class FMCVAE(VAE_with_flows):
     """
     Flow-Augmented Monte Carlo VAE (F-MCVAE)
 
     This model first applies a normalizing flow (as in VAE_with_flows)
     to the latent variable from the encoder, and then refines the sample
-    with a short AIS/SIS chain using a ULA sampler (with Kprime=5 steps by default).
+    with a short AIS/SIS chain using a chosen sampler.
+    
+    The parameter `method` determines how the importance weights are updated:
+      - "AIS": simply accumulate the weight increments.
+      - "SIS": after each transition, normalize (i.e. re-scale) the weights to avoid explosion.
     """
-    def __init__(self, flow_type, num_flows, Kprime=5, ula_step_size=0.01, **kwargs):
+    def __init__(self, flow_type, num_flows, Kprime=5, ula_step_size=0.01, method="AIS", **kwargs):
         super().__init__(flow_type=flow_type, num_flows=num_flows, **kwargs)
         self.Kprime = Kprime
-        # Instantiate a ULA sampler (from your samplers module)
+        self.method = method.upper()  # "AIS" or "SIS"
+        # Instantiate a ULA sampler (assumed to be defined in your samplers module)
         self.ula_sampler = ULA(step_size=ula_step_size, learnable=False)
 
     def step(self, batch):
@@ -786,27 +790,50 @@ class FMCVAE(VAE_with_flows):
         # --- Step 1: Apply the Normalizing Flow ---
         flow_out = self.Flow(z)
         z0 = flow_out[0]            # Flow-transformed latent variable
-        flow_log_det = flow_out[1]    # Log-determinant correction
+        flow_log_det = flow_out[1]   # Log-determinant correction
 
         # --- Step 2: Run a Short AIS/SIS Chain (Kprime steps) ---
         z_chain = z0
+        # Define a function to compute the initial log density (from the encoder)
         init_logdensity = lambda z: torch.distributions.Normal(
             loc=mu, 
             scale=torch.exp(0.5 * logvar)
         ).log_prob(z).sum(-1)
+        
+        # Define an annealing schedule over Kprime+2 points
         beta = torch.linspace(0., 1., self.Kprime + 2, device=x.device, dtype=torch.float32)
+        
+        # Initialize the cumulative log weight
         log_weight = (beta[1] - beta[0]) * (self.joint_logdensity()(z=z_chain, x=x_rep) - init_logdensity(z_chain))
         
         for i in range(1, self.Kprime + 1):
+            # Define the annealed target density for the current step.
+            # Note: the lambda takes z as an argument (the candidate from the transition)
             target = lambda z, x: (1. - beta[i]) * init_logdensity(z) + beta[i] * self.joint_logdensity()(z=z, x=x_rep)
-            # Get the transition output
+            
+            # Get the transition output from the sampler (e.g. ULA)
             transition_out = self.ula_sampler.make_transition(z=z_chain, x=x_rep, target=target)
-            # If a tuple is returned, extract the first element
+            # If the output is a tuple, take its first element
             if isinstance(transition_out, tuple):
                 z_chain = transition_out[0]
             else:
                 z_chain = transition_out
-            log_weight = log_weight + (beta[i+1] - beta[i]) * (self.joint_logdensity()(z=z_chain, x=x_rep) - init_logdensity(z_chain))
+            
+            # Compute the log density difference for this step
+            delta_beta = beta[i+1] - beta[i]
+            diff = self.joint_logdensity()(z=z_chain, x=x_rep) - init_logdensity(z_chain)
+            # Clamp the difference to prevent extreme values from blowing up the weights
+            diff = torch.clamp(diff, min=-100.0, max=100.0)
+            
+            if self.method == "AIS":
+                log_weight = log_weight + delta_beta * diff
+            elif self.method == "SIS":
+                log_weight = log_weight + delta_beta * diff
+                # Normalize (rescale) the weights at each step using logsumexp
+                norm = torch.logsumexp(log_weight, dim=0)
+                log_weight = log_weight - norm
+            else:
+                raise ValueError("Unknown method: choose 'AIS' or 'SIS'")
         
         # --- Step 3: Compute Reconstruction and Loss ---
         x_hat = self(z_chain)  # This calls self.forward -> self.decode
@@ -815,5 +842,3 @@ class FMCVAE(VAE_with_flows):
         loss = -torch.mean(likelihood) + KLD_term
 
         return loss, x_hat, z_chain
-
-

@@ -61,8 +61,9 @@ if __name__ == '__main__':
     parser.add_argument("--sigma", type=float, default=1.)
 
     parser.add_argument("--num_flows", type=int, default=1)
-    parser.add_argument("--Kprime", type=int, default=5,
-                    help="Number of AIS/SIS steps for FMCVAE")
+    parser.add_argument("--Kprime", type=int, default=5,help="Number of AIS/SIS steps for FMCVAE")
+    parser.add_argument("--ais_method", type=str, default="AIS",choices=["AIS", "SIS"],help="Weight update method for FMCVAE: 'AIS' accumulates weights, 'SIS' normalizes at each step.")
+
 
     act_func = get_activations()
 
@@ -115,16 +116,23 @@ if __name__ == '__main__':
                        ula_skip_threshold=args.ula_skip_threshold, annealing_scheme=args.annealing_scheme,
                        specific_likelihood=args.specific_likelihood, sigma=args.sigma)
     elif args.model == "FMCVAE":
-        # Instantiate FMCVAE with Kprime (short AIS/SIS steps) and a given ULA step size.
-        # Here, we reuse args.step_size as the ULA step size.
-        model = FMCVAE(shape=image_shape, act_func=act_func[args.act_func], num_samples=args.num_samples,
-                       hidden_dim=args.hidden_dim, name=args.model, flow_type="RealNVP",
-                       num_flows=args.num_flows,
-                       net_type=args.net_type, dataset=args.dataset,
-                       specific_likelihood=args.specific_likelihood,
-                       sigma=args.sigma,
-                       Kprime=args.Kprime,
-                       ula_step_size=args.step_size)
+        model = FMCVAE(
+            shape=image_shape, 
+            act_func=act_func[args.act_func], 
+            num_samples=args.num_samples,
+            hidden_dim=args.hidden_dim, 
+            name=args.model, 
+            flow_type="RealNVP",
+            num_flows=args.num_flows,
+            net_type=args.net_type, 
+            dataset=args.dataset,
+            specific_likelihood=args.specific_likelihood,
+            sigma=args.sigma,
+            Kprime=args.Kprime,
+            ula_step_size=args.step_size,
+            method=args.ais_method
+        )
+
     else:
         raise ValueError
 
