@@ -9,6 +9,11 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, datasets
 
+def repeat_data(x, n_samples):
+    if x.dim() == 4:
+        return x.repeat(n_samples, 1, 1, 1)
+    else:
+        return x.repeat(n_samples, 1)
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -37,7 +42,7 @@ class MyDataset(Dataset):
         elif isinstance(self.data[0], str):
             self.shape_size = 64
         else:
-            self.shape_size = self.data[0][0].size[-1]
+            self.shape_size = self.data[0][0].size()[-1]
         self.reshape = reshape
 
     def __len__(self):
@@ -132,3 +137,10 @@ def get_activations():
         "softplus": torch.nn.Softplus,
         "gelu": nn.GELU
     }
+
+
+
+def binary_crossentropy_logits_stable(logits, targets):
+    abs_logits = torch.abs(logits)
+    bce = torch.clamp(logits, min=0) - logits * targets + torch.log(1.0 + torch.exp(-abs_logits))
+    return bce

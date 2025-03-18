@@ -4,11 +4,21 @@ import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 import matplotlib.pyplot as plt
 import torchvision.utils as vutils
+import torch.nn as nn
 
 from vaes import VAE, IWAE, AMCVAE, LMCVAE, VAE_with_flows, FMCVAE
 from utils import make_dataloaders, get_activations, str2bool
 
 import torch
+torch.set_float32_matmul_precision("high")
+
+activation_dict = {
+    "relu": nn.ReLU,
+    "gelu": nn.GELU,
+    "leakyrelu": nn.LeakyReLU,
+    "tanh": nn.Tanh,
+    "silu": nn.SiLU
+}
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -19,7 +29,7 @@ if __name__ == '__main__':
                         choices=["VAE", "IWAE", "AMCVAE", "LMCVAE", "VAE_with_flows", "FMCVAE"])
 
     ## Dataset params
-    parser.add_argument("--dataset", default='fashionmnist', choices=['mnist', 'fashionmnist', 'cifar', 'omniglot', 'celeba'])
+    parser.add_argument("--dataset", default='mnist', choices=['mnist', 'fashionmnist', 'cifar', 'omniglot', 'celeba'])
     parser.add_argument("--binarize", type=str2bool, default=False)
     ## Training parameters
     parser.add_argument("--batch_size", default=32, type=int)
@@ -30,14 +40,13 @@ if __name__ == '__main__':
     ## Architecture
     parser.add_argument("--hidden_dim", default=64, type=int)
     parser.add_argument("--num_samples", default=1, type=int)
-    parser.add_argument("--act_func", default="gelu",
-                        choices=["relu", "leakyrelu", "tanh", "logsigmoid", "logsoftmax", "softplus", "gelu", "silu"])
+    parser.add_argument("--act_func", default="gelu",choices=["relu", "leakyrelu", "tanh", "logsigmoid", "logsoftmax", "softplus", "gelu", "silu"])
     parser.add_argument("--net_type", choices=["fc", "conv"], type=str, default="conv")
 
     ## Specific parameters
     parser.add_argument("--K", type=int, default=3)
     parser.add_argument("--n_leapfrogs", type=int, default=3)
-    parser.add_argument("--step_size", type=float, default=0.01)
+    parser.add_argument("--step_size", type=float, default=0.0001)
 
     parser.add_argument("--use_barker", type=str2bool, default=False)
     parser.add_argument("--use_score_matching", type=str2bool, default=False)  # for ULA
@@ -61,14 +70,19 @@ if __name__ == '__main__':
     parser.add_argument("--sigma", type=float, default=1.)
 
     parser.add_argument("--num_flows", type=int, default=1)
-    parser.add_argument("--Kprime", type=int, default=5,help="Number of AIS/SIS steps for FMCVAE")
-    parser.add_argument("--ais_method", type=str, default="AIS",choices=["AIS", "SIS"],help="Weight update method for FMCVAE: 'AIS' accumulates weights, 'SIS' normalizes at each step.")
-
-
-    act_func = get_activations()
+    parser.add_argument("--Kprime", type=int, default=10,help="Number of AIS/SIS steps for FMCVAE")
+    parser.add_argument("--ais_method", type=str, default="SIS",choices=["AIS", "SIS"],help="Weight update method for FMCVAE: 'AIS' accumulates weights, 'SIS' normalizes at each step.")
+    parser.add_argument("--sampler_type", type=str, default="MALA",choices=["ULA", "MALA", "HMC"],
+                    help="Markov transition sampler type for FMCVAE: ULA, MALA, or HMC.")
+    parser.add_argument("--flow_type", type=str, default="RealNVP")
 
     args = parser.parse_args()
     print(args)
+
+    act_func = activation_dict.get(args.act_func.lower())
+    if act_func is None:
+        raise ValueError(f"Unknown activation function: {args.act_func}")
+
 
     kwargs = {'num_workers': 8, 'pin_memory': True}
     train_loader, val_loader = make_dataloaders(dataset=args.dataset,
@@ -115,22 +129,24 @@ if __name__ == '__main__':
                        variance_sensitive_step=args.variance_sensitive_step,
                        ula_skip_threshold=args.ula_skip_threshold, annealing_scheme=args.annealing_scheme,
                        specific_likelihood=args.specific_likelihood, sigma=args.sigma)
+
     elif args.model == "FMCVAE":
         model = FMCVAE(
             shape=image_shape, 
-            act_func=act_func[args.act_func], 
+            act_func=act_func,  # pass an activation constructor if needed
             num_samples=args.num_samples,
-            hidden_dim=args.hidden_dim, 
-            name=args.model, 
-            flow_type="RealNVP",
+            hidden_dim=args.hidden_dim,
+            name="FMCVAE",
+            flow_type=args.flow_type,
             num_flows=args.num_flows,
-            net_type=args.net_type, 
+            net_type="conv",  # or "fc"
             dataset=args.dataset,
-            specific_likelihood=args.specific_likelihood,
-            sigma=args.sigma,
+            specific_likelihood=None,  # or 'bernoulli' if you want
+            sigma=1.0,
             Kprime=args.Kprime,
-            ula_step_size=args.step_size,
-            method=args.ais_method
+            sampler_type=args.sampler_type,
+            sampler_step_size=args.step_size,
+            ais_method=args.ais_method,
         )
 
     else:
@@ -144,7 +160,7 @@ if __name__ == '__main__':
         "fast_dev_run": False,
         "accelerator": "gpu",
         "devices": 1,
-        "max_epochs": 10  # 2 useless, try 20 maybe
+        "max_epochs": 30  # 2 useless, try 20 maybe
         # "terminate_on_nan": automatic_optimization,  # Remove or comment out this line
     }
     trainer = pl.Trainer(**trainer_kwargs)
