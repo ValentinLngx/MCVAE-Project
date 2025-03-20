@@ -772,24 +772,10 @@ class LMCVAE(BaseMCMC):
 
 
 class FMCVAE(pl.LightningModule):
-    def __init__(
-        self,
-        shape,
-        act_func,
-        num_samples,
-        hidden_dim,
-        name="FMCVAE",
-        flow_type="RealNVP",
-        num_flows=0,
-        net_type="conv",
-        dataset="mnist",
-        specific_likelihood=None,
-        sigma=1.0,
-        Kprime=5,
-        sampler_type="ULA",
-        sampler_step_size=0.01,
-        ais_method="AIS",
-    ):
+    def __init__(self,shape,act_func, num_samples, hidden_dim,
+        name="FMCVAE", flow_type="RealNVP", num_flows=0,
+        net_type="conv", dataset="mnist", specific_likelihood=None, sigma=1.0,
+        Kprime=5, sampler_type="ULA", sampler_step_size=0.01,ais_method="AIS"):
         super().__init__()
         self.shape = shape
         self.dataset = dataset
@@ -828,7 +814,7 @@ class FMCVAE(pl.LightningModule):
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
-        logvar = torch.clamp(logvar, min=-30.0, max=20.0)
+        logvar = torch.clamp(logvar, min=-50.0, max=50.0)
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + std * eps
@@ -929,3 +915,7 @@ class FMCVAE(pl.LightningModule):
         loss, _, _ = self.step(batch)
         self.log("val_loss", loss)
         return {"val_loss": loss}
+
+
+
+

@@ -7,6 +7,8 @@ import torch.nn as nn
 from pytorch_lightning import loggers as pl_loggers
 from torch.utils.data import Dataset, DataLoader
 
+from sklearn.datasets import make_blobs
+
 from vaes import Base, VAE, IWAE, AMCVAE, LMCVAE, VAE_with_flows, FMCVAE
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -25,12 +27,20 @@ def repeat_data(x, n_samples):
 
 use_true = False
 
-
+"""
 def generate_dataset(N, d=2, sigma=1.):
     z = np.random.randn(N, d)
     x = 2 * np.pi * (np.linalg.norm(z, axis=1, keepdims=True) + 2.) + np.random.randn(N, 1) * sigma
     return x
 
+"""
+# ------------------------------
+def generate_dataset(N, d=2, centers=3, cluster_std=1.0):
+    X, _ = make_blobs(n_samples=N, n_features=d, centers=centers, cluster_std=cluster_std, random_state=42)
+    norms = np.linalg.norm(X, axis=1, keepdims=True) # sinusoidal transformation
+    x = np.sin(norms) + 0.1 * np.random.randn(N, 1)
+    return x
+# ------------------------------
 
 def replace_enc_dec(model, d):
     model.encoder_net = ToyEncoder(d)
