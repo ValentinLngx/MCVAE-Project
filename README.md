@@ -12,9 +12,10 @@ In this repository you will find:
 
 ## Repository Structure
 
-- **`src/`**: Contains the source code for model implementations and experiment scripts.
+- **`main/`**: Contains the source code for experiment scripts.
+- **`vaes/`**: Contains the source code for vaes.
 - **`results_visual/`**: Jupyter notebooks for visualization of discrepancy of the different methods.
-- **`toy_examples/`**: Jupyter notebooks for visualization of discrepancy of the different methods.
+- **`toy_examples/`**: Jupyter notebooks for visualization of ELBO over epochs.
 - **`data/`**: Sample datasets for training and evaluation.
 - **`README.md`**: This file.
 
