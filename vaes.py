@@ -214,11 +214,12 @@ class Base(pl.LightningModule):
             if self.name == "VAE_with_flows":
                 z_0 = z.clone()
                 output = self.Flow(z_0)
-                z = output["z_new"]
-
+                #z = output["z_new"]
+                z = output[0]
                 def init_logdensity(z):
                     output = self.Flow.inverse(z)
-                    z_0, log_jac = output["z_new"], output["aggregated_log_jac"]
+                    #z_0, log_jac = output["z_new"], output["aggregated_log_jac"]
+                    z_0, log_jac = output[0], output[1]
                     return torch.distributions.Normal(loc=mu, scale=torch.exp(0.5 * logvar)).log_prob(z_0).sum(
                         -1) + log_jac
             else:
