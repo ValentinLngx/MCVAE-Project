@@ -211,20 +211,10 @@ class Base(pl.LightningModule):
             n_samples = 10  # num samples for NLL estimation per data object
             z, mu, logvar = self.enc_rep(x, n_samples=n_samples)
             x = repeat_data(x, n_samples)
-            if self.name == "VAE_with_flows":
-                z_0 = z.clone()
-                output = self.Flow(z_0)
-                #z = output["z_new"]
-                z = output[0]
-                def init_logdensity(z):
-                    output = self.Flow.inverse(z)
-                    #z_0, log_jac = output["z_new"], output["aggregated_log_jac"]
-                    z_0, log_jac = output[0], output[1]
-                    return torch.distributions.Normal(loc=mu, scale=torch.exp(0.5 * logvar)).log_prob(z_0).sum(
-                        -1) + log_jac
-            else:
-                init_logdensity = lambda z: torch.distributions.Normal(loc=mu, scale=torch.exp(0.5 * logvar)).log_prob(
-                    z).sum(-1)
+
+            #### **
+
+            init_logdensity = lambda z: torch.distributions.Normal(loc=mu, scale=torch.exp(0.5 * logvar)).log_prob(z).sum(-1)
             annealing_logdens = lambda beta: lambda z, x: (1. - beta) * init_logdensity(
                 z=z) + beta * self.joint_logdensity()(
                 z=z,
@@ -919,4 +909,18 @@ class FMCVAE(pl.LightningModule):
 
 
 
-
+# In ** replace with:
+"""
+            if self.name == "VAE_with_flows":
+                z_0 = z.clone()
+                output = self.Flow(z_0)
+                z = output["z_new"]
+                def init_logdensity(z):
+                    output = self.Flow.inverse(z)
+                    z_0, log_jac = output["z_new"], output["aggregated_log_jac"]
+                    return torch.distributions.Normal(loc=mu, scale=torch.exp(0.5 * logvar)).log_prob(z_0).sum(
+                        -1) + log_jac
+            else:
+                init_logdensity = lambda z: torch.distributions.Normal(loc=mu, scale=torch.exp(0.5 * logvar)).log_prob(
+                    z).sum(-1)"""
+# to get the original code from the article
