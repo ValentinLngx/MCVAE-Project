@@ -7,7 +7,7 @@ import torch.nn as nn
 from pytorch_lightning import loggers as pl_loggers
 from torch.utils.data import Dataset, DataLoader
 
-from vaes import Base, VAE, IWAE, AMCVAE, LMCVAE, VAE_with_flows
+from vaes import Base, VAE, IWAE, AMCVAE, LMCVAE, VAE_with_flows, FMCVAE
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -163,7 +163,7 @@ class ToyDecoder(nn.Module):
         super().__init__()
         self.log_alpha = nn.Parameter(torch.tensor(2., device=device, dtype=torch.float32))
         self.log_beta = nn.Parameter(torch.tensor(2., device=device, dtype=torch.float32))
-        self.sigma = sigma
+        self.sigma = 1
 
     @property
     def alpha(self, ):
@@ -202,11 +202,20 @@ def get_beta(model):
 if __name__ == '__main__':
     N = 10000
     sigma = 1.
-    full_results = {'VAE': [], 'IWAE': [], 'L-MCVAE': [], 'A-MCVAE': [], 'RealNVP': []}
-    full_alphas = {'VAE': [], 'IWAE': [], 'L-MCVAE': [], 'A-MCVAE': [], 'RealNVP': []}
-    full_betas = {'VAE': [], 'IWAE': [], 'L-MCVAE': [], 'A-MCVAE': [], 'RealNVP': []}
+    full_results = {'VAE': [], 'IWAE': [], 'L-MCVAE': [], 'A-MCVAE': [], 'RealNVP': [], 'F-MCVAE':[]}
+    full_alphas = {'VAE': [], 'IWAE': [], 'L-MCVAE': [], 'A-MCVAE': [], 'RealNVP': [], 'F-MCVAE':[]}
+    full_betas = {'VAE': [], 'IWAE': [], 'L-MCVAE': [], 'A-MCVAE': [], 'RealNVP': [], 'F-MCVAE':[]}
     for d in [2, 5, 10, 20, 50, 100, 150, 200, 300]:
         print(f'Current dimension is {d}')
+        # ---- FMVAE ----- #
+        fmcvae = FMCVAE(
+            shape=28,act_func=nn.LeakyReLU,
+            num_samples=5,hidden_dim=d,
+            net_type='conv',dataset='toy',
+            sampler_type='ULA',sampler_step_size=0.01,
+            ais_method='AIS', flow_type="RealNVP", num_flows=2).to(device)
+        fmcvae = replace_enc_dec(fmcvae)
+
         # ----- VAE ------ #
         vae = VAE_Toy(shape=28, act_func=nn.LeakyReLU,
                       num_samples=1, hidden_dim=d,
@@ -261,6 +270,12 @@ if __name__ == '__main__':
         val_dataset = ToyDataset(data=X_val)
         train_loader = DataLoader(train_dataset, batch_size=100, shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=100, shuffle=False)
+
+        print('FMCVAE')
+        run_trainer(fmcvae, num_epoches=2)
+        full_results['F-MCVAE'].append(compute_discrepancy(fmcvae).cpu().item())
+        full_alphas['F-MCVAE'].append(get_alpha(fmcvae).cpu().item())
+        full_betas['F-MCVAE'].append(get_beta(fmcvae).cpu().item())
 
         print('IWAE')
         run_trainer(iwae)

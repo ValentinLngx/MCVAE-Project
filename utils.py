@@ -79,7 +79,7 @@ def make_dataloaders(dataset, batch_size, val_batch_size, binarize=False, **kwar
         val_data = data.test_data.numpy()
         val_labels = data.test_labels.numpy()
         val_dataset = MyDataset([val_data, val_labels], binarize=binarize)
-        val_loader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=False, **kwargs)
+        val_loader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=False,persistent_workers=True, **kwargs)
 
     elif dataset == 'fashionmnist':
         train_data = datasets.FashionMNIST('./data', train=True, download=True).train_data.to(torch.float32)
@@ -90,7 +90,7 @@ def make_dataloaders(dataset, batch_size, val_batch_size, binarize=False, **kwar
         val_data = datasets.FashionMNIST('./data', train=False).test_data.to(torch.float32)
         val_data /= val_data.max()
         val_dataset = MyDataset(val_data, binarize=binarize)
-        val_loader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=False, **kwargs)
+        val_loader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=False,persistent_workers=True, **kwargs)
 
     elif dataset == 'cifar':
         train_data = datasets.CIFAR10('./data', train=True, download=True).data
@@ -99,16 +99,16 @@ def make_dataloaders(dataset, batch_size, val_batch_size, binarize=False, **kwar
 
         val_data = datasets.CIFAR10('./data', train=False, download=True).data
         val_dataset = MyDataset(val_data, binarize=False)
-        val_loader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=False, **kwargs)
+        val_loader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=False, persistent_workers=True,**kwargs)
 
     elif dataset == 'omniglot':
         train_data = datasets.Omniglot('./data', background=True, download=True)
         train_dataset = MyDataset(train_data, binarize=binarize)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, **kwargs)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, persistent_workers=True,**kwargs)
 
         val_data = datasets.Omniglot('./data', background=False, download=True)
         val_dataset = MyDataset(val_data, binarize=binarize)
-        val_loader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=False, **kwargs)
+        val_loader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=False, persistent_workers=True,**kwargs)
 
     elif dataset == 'celeba':
         path = './data/celeba/img_align_celeba_png.7z/img_align_celeba_png'

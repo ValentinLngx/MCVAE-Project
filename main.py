@@ -40,7 +40,7 @@ if __name__ == '__main__':
     ## Architecture
     parser.add_argument("--hidden_dim", default=64, type=int)
     parser.add_argument("--num_samples", default=1, type=int)
-    parser.add_argument("--act_func", default="gelu",choices=["relu", "leakyrelu", "tanh", "logsigmoid", "logsoftmax", "softplus", "gelu", "silu"])
+    parser.add_argument("--act_func", default="relu",choices=["relu", "leakyrelu", "tanh", "logsigmoid", "logsoftmax", "softplus", "gelu", "silu"])
     parser.add_argument("--net_type", choices=["fc", "conv"], type=str, default="conv")
 
     ## Specific parameters
@@ -70,18 +70,20 @@ if __name__ == '__main__':
     parser.add_argument("--sigma", type=float, default=1.)
 
     parser.add_argument("--num_flows", type=int, default=1)
-    parser.add_argument("--Kprime", type=int, default=10,help="Number of AIS/SIS steps for FMCVAE")
+    parser.add_argument("--Kprime", type=int, default=5,help="Number of AIS/SIS steps for FMCVAE")
     parser.add_argument("--ais_method", type=str, default="SIS",choices=["AIS", "SIS"],help="Weight update method for FMCVAE: 'AIS' accumulates weights, 'SIS' normalizes at each step.")
     parser.add_argument("--sampler_type", type=str, default="MALA",choices=["ULA", "MALA", "HMC"],
                     help="Markov transition sampler type for FMCVAE: ULA, MALA, or HMC.")
     parser.add_argument("--flow_type", type=str, default="RealNVP")
 
+    act_func = get_activations()
+
     args = parser.parse_args()
     print(args)
 
-    act_func = activation_dict.get(args.act_func.lower())
-    if act_func is None:
-        raise ValueError(f"Unknown activation function: {args.act_func}")
+    #act_func = activation_dict.get(args.act_func.lower())
+    #if act_func is None:
+    #    raise ValueError(f"Unknown activation function: {args.act_func}")
 
 
     kwargs = {'num_workers': 8, 'pin_memory': True}
@@ -132,22 +134,10 @@ if __name__ == '__main__':
 
     elif args.model == "FMCVAE":
         model = FMCVAE(
-            shape=image_shape, 
-            act_func=act_func,  # pass an activation constructor if needed
-            num_samples=args.num_samples,
-            hidden_dim=args.hidden_dim,
-            name="FMCVAE",
-            flow_type=args.flow_type,
-            num_flows=args.num_flows,
-            net_type="conv",  # or "fc"
-            dataset=args.dataset,
-            specific_likelihood=None,  # or 'bernoulli' if you want
-            sigma=1.0,
-            Kprime=args.Kprime,
-            sampler_type=args.sampler_type,
-            sampler_step_size=args.step_size,
-            ais_method=args.ais_method,
-        )
+            shape=image_shape, act_func=act_func[args.act_func],num_samples=args.num_samples,
+            hidden_dim=args.hidden_dim, name="FMCVAE",flow_type=args.flow_type, num_flows=args.num_flows,
+            net_type="conv",  dataset=args.dataset,specific_likelihood=None,sigma=1.0,
+            Kprime=args.Kprime,sampler_type=args.sampler_type,sampler_step_size=args.step_size,ais_method=args.ais_method)
 
     else:
         raise ValueError
@@ -159,8 +149,8 @@ if __name__ == '__main__':
         "logger": tb_logger,
         "fast_dev_run": False,
         "accelerator": "gpu",
-        "devices": 4,
-        "max_epochs": 30  # 2 useless, try 20 maybe
+        "devices": 1,
+        "max_epochs": 1  # 2 useless, try 20 maybe
         # "terminate_on_nan": automatic_optimization,  # Remove or comment out this line
     }
     trainer = pl.Trainer(**trainer_kwargs)

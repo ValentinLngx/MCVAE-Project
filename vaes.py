@@ -12,6 +12,7 @@ from decoders import get_decoder
 from encoders import get_encoder, backward_kernel_mnist
 from normflows import NormFlow
 from samplers import HMC, MALA, ULA
+from utils import binary_crossentropy_logits_stable, repeat_data
 
 
 def binary_crossentropy_logits_stable(x, y):
@@ -761,83 +762,9 @@ class LMCVAE(BaseMCMC):
                                     beta=torch.linspace(0., 1., 5, device=batch[0].device, dtype=torch.float32))
             d.update({"nll": nll})
         return d
-"""
-class FMCVAE(VAE_with_flows):
-    def __init__(self, flow_type, num_flows, Kprime=5, sampler_type="ULA", sampler_step_size=0.01, method="AIS", **kwargs):
-        super().__init__(flow_type=flow_type, num_flows=num_flows, **kwargs)
-        self.Kprime = Kprime
-        self.method = method.upper()  # "AIS" or "SIS"
-        self.sampler_type = sampler_type.upper()  # "ULA", "MALA", or "HMC"
-        
-        # Instantiate the chosen Markov transition sampler
-        if self.sampler_type == "ULA":
-            self.markov_sampler = ULA(step_size=sampler_step_size, learnable=False)
-        elif self.sampler_type == "MALA":
-            self.markov_sampler = MALA(step_size=sampler_step_size, use_barker=False, learnable=False)
-        elif self.sampler_type == "HMC":
-            self.markov_sampler = HMC(n_leapfrogs=3, step_size=sampler_step_size, use_barker=False)
-        else:
-            raise ValueError("Unknown sampler type: {}. Choose from ULA, MALA, or HMC.".format(sampler_type))
-    
-    def step(self, batch):
-        x, _ = batch
-        # Obtain latent samples from the encoder (with repetition for num_samples)
-        z, mu, logvar = self.enc_rep(x, self.num_samples)
-        x_rep = repeat_data(x, self.num_samples)
-
-        # --- Step 1: Apply the Normalizing Flow ---
-        flow_out = self.Flow(z)
-        z0 = flow_out[0]            # Flow-transformed latent variable
-        flow_log_det = flow_out[1]   # Log-determinant correction
-
-        # --- Step 2: Run a Short AIS/SIS Chain (Kprime steps) ---
-        z_chain = z0
-        init_logdensity = lambda z: torch.distributions.Normal(
-            loc=mu, 
-            scale=torch.exp(0.5 * logvar)
-        ).log_prob(z).sum(-1)
-        
-        beta = torch.linspace(0., 1., self.Kprime + 2, device=x.device, dtype=torch.float32)
-        log_weight = (beta[1] - beta[0]) * (self.joint_logdensity()(z=z_chain, x=x_rep) - init_logdensity(z_chain))
-        
-        for i in range(1, self.Kprime + 1):
-            target = lambda z, x: (1. - beta[i]) * init_logdensity(z) + beta[i] * self.joint_logdensity()(z=z, x=x_rep)
-            transition_out = self.markov_sampler.make_transition(z=z_chain, x=x_rep, target=target)
-            if isinstance(transition_out, tuple):
-                z_chain = transition_out[0]
-            else:
-                z_chain = transition_out
-            
-            delta_beta = beta[i+1] - beta[i]
-            diff = self.joint_logdensity()(z=z_chain, x=x_rep) - init_logdensity(z_chain)
-            diff = torch.clamp(diff, min=-100.0, max=100.0)
-            
-            if self.method == "AIS":
-                log_weight = log_weight + delta_beta * diff
-            elif self.method == "SIS":
-                log_weight = log_weight + delta_beta * diff
-                norm = torch.logsumexp(log_weight, dim=0)
-                log_weight = log_weight - norm
-            else:
-                raise ValueError("Unknown method: choose 'AIS' or 'SIS'")
-        
-        # --- Step 3: Compute Reconstruction and Loss ---
-        x_hat = self(z_chain)  # Calls self.forward -> self.decode
-        likelihood = self.get_likelihood(x_hat, x_rep)
-        KLD_term = -torch.mean(log_weight + flow_log_det)
-        loss = -torch.mean(likelihood) + KLD_term
-
-        return loss, x_hat, z_chain
-
-"""
 
 
-import torch
-import torch.nn.functional as F
-import math
 
-from samplers import ULA, MALA, HMC  # Assuming your samplers are in samplers.py
-from utils import binary_crossentropy_logits_stable, repeat_data
 
 
 
@@ -875,19 +802,14 @@ class FMCVAE(pl.LightningModule):
         self.num_flows = num_flows
         self.name = name
 
-        # Build encoder and decoder using your helper functions.
-        from encoders import get_encoder
-        from decoders import get_decoder
         self.encoder_net = get_encoder(net_type, act_func, hidden_dim, dataset, shape=shape)
         self.decoder_net = get_decoder(net_type, act_func, hidden_dim, dataset, shape=shape)
 
-        # Set up flows using your NormFlow implementation.
         if self.num_flows > 0:
             self.Flow = NormFlow(flow_type=self.flow_type, num_flows=self.num_flows, hidden_dim=self.hidden_dim, need_permute=True)
         else:
             self.Flow = None
 
-        # Set up the chosen sampler.
         if self.sampler_type == "ULA":
             self.markov_sampler = ULA(step_size=self.sampler_step_size, learnable=False)
         elif self.sampler_type == "MALA":
@@ -898,29 +820,20 @@ class FMCVAE(pl.LightningModule):
             raise ValueError(f"Unknown sampler type: {sampler_type}. Choose from [ULA, MALA, HMC].")
 
     def encode(self, x):
-        """Encodes x into (mu, logvar)."""
         h = self.encoder_net(x)
-        # Assume h has shape [batch, 2*hidden_dim]: first half for mu, second half for logvar.
         mu, logvar = h[:, :self.hidden_dim], h[:, self.hidden_dim:]
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
-        """Samples z ~ N(mu, exp(logvar))."""
         logvar = torch.clamp(logvar, min=-30.0, max=20.0)
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + std * eps
 
     def decode(self, z):
-        """Decodes z into logits (or means if using a Gaussian likelihood)."""
         return self.decoder_net(z)
 
     def get_likelihood(self, x_reconst, x):
-        """
-        Returns log p(x|z) for each sample in the batch.
-        If specific_likelihood is None or 'gaussian', assume Normal with std = self.sigma.
-        If 'bernoulli', use binary cross-entropy.
-        """
         if self.specific_likelihood is None:
             if self.dataset in ["mnist", "fashionmnist"]:
                 ll = -binary_crossentropy_logits_stable(
@@ -943,10 +856,6 @@ class FMCVAE(pl.LightningModule):
         return ll
 
     def joint_logdensity(self):
-        """
-        Returns a function that computes log p(x, z) = log p(z) + log p(x|z).
-        Here, the prior p(z) is standard Normal.
-        """
         def density(z, x):
             log_p_z = torch.distributions.Normal(loc=0.0, scale=1.0).log_prob(z).sum(dim=1)
             x_reconst = self.decode(z)
@@ -955,39 +864,27 @@ class FMCVAE(pl.LightningModule):
         return density
 
     def forward(self, z):
-        """By convention, forward(z) returns decode(z)."""
         return self.decode(z)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=1e-4)
 
     def step(self, batch):
-        """
-        Main training step:
-         1) Encode x into z0.
-         2) If flows exist, apply them and accumulate the log-determinant correction.
-         3) Run a short MCMC chain (Kprime steps) using the chosen sampler.
-         4) Combine the reconstruction and KL terms to form the ELBO.
-        """
         x, _ = batch
         batch_size = x.size(0)
 
-        # If multiple samples per data point are desired, repeat x.
         if self.num_samples > 1:
             x = repeat_data(x, self.num_samples)
 
-        # 1) Encode and reparameterize to obtain z0.
         mu, logvar = self.encode(x)
         z0 = self.reparameterize(mu, logvar)
 
-        # 2) If flows are defined, apply them.
         z = z0
         total_log_det = 0.0
         if self.Flow is not None:
             z, log_jac = self.Flow(z)
             total_log_det += log_jac
 
-        # 3) Run a short MCMC chain (Kprime steps).
         def init_logdensity(z):
             lv = torch.clamp(logvar, min=-30.0, max=20.0)
             var = torch.exp(lv)
@@ -999,7 +896,6 @@ class FMCVAE(pl.LightningModule):
         
         for i in range(1, self.Kprime + 1):
             cur_beta = beta[i]
-            # Target function now accepts (z, x) as keywords.
             def target(z, x):
                 return (1.0 - cur_beta) * init_logdensity(z) + cur_beta * self.joint_logdensity()(z, x)
             out = self.markov_sampler.make_transition(z, target=target, x=x)
@@ -1011,16 +907,14 @@ class FMCVAE(pl.LightningModule):
             diff = self.joint_logdensity()(z, x) - init_logdensity(z)
             diff = torch.clamp(diff, min=-100, max=100)
             delta = beta[i + 1] - beta[i]
-            log_w = log_w + delta * diff  # out-of-place update
+            log_w = log_w + delta * diff 
             if self.ais_method == "SIS":
                 log_norm = torch.logsumexp(log_w, dim=0)
-                log_w = log_w - log_norm  # out-of-place update
+                log_w = log_w - log_norm
 
-        # 4) Decode final latent sample to reconstruct x.
         x_hat = self.decode(z)
         ll = self.get_likelihood(x_hat, x)
-        # ELBO approximation: ELBO = log p(x|z) + log_w (including flow correction if any)
-        loss = - (ll + log_w)
+        loss = - (ll + log_w) # ELBO approximation: ELBO = log p(x|z) + log_w
         loss_mean = loss.mean()
         return loss_mean, x_hat, z
 
