@@ -25,15 +25,15 @@ if __name__ == '__main__':
     #parser = pl.Trainer.add_argparse_args(parser)
     tb_logger = pl_loggers.TensorBoardLogger('lightning_logs/')
 
-    parser.add_argument("--model", default="FMCVAE",
+    parser.add_argument("--model", default="IWAE",
                         choices=["VAE", "IWAE", "AMCVAE", "LMCVAE", "VAE_with_flows", "FMCVAE"])
 
     ## Dataset params
-    parser.add_argument("--dataset", default='mnist', choices=['mnist', 'fashionmnist', 'cifar', 'omniglot', 'celeba'])
+    parser.add_argument("--dataset", default='fashionmnist', choices=['mnist', 'fashionmnist', 'cifar', 'omniglot', 'celeba'])
     parser.add_argument("--binarize", type=str2bool, default=False)
     ## Training parameters
-    parser.add_argument("--batch_size", default=32, type=int)
-    parser.add_argument("--val_batch_size", default=50, type=int)
+    parser.add_argument("--batch_size", default=512, type=int)
+    parser.add_argument("--val_batch_size", default=252, type=int)
     parser.add_argument("--grad_skip_val", type=float, default=0.)
     parser.add_argument("--grad_clip_val", type=float, default=0.)
 
@@ -46,7 +46,7 @@ if __name__ == '__main__':
     ## Specific parameters
     parser.add_argument("--K", type=int, default=3)
     parser.add_argument("--n_leapfrogs", type=int, default=3)
-    parser.add_argument("--step_size", type=float, default=0.0001)
+    parser.add_argument("--step_size", type=float, default=0.001)
 
     parser.add_argument("--use_barker", type=str2bool, default=False)
     parser.add_argument("--use_score_matching", type=str2bool, default=False)  # for ULA
@@ -72,7 +72,7 @@ if __name__ == '__main__':
     parser.add_argument("--num_flows", type=int, default=1)
     parser.add_argument("--Kprime", type=int, default=5,help="Number of AIS/SIS steps for FMCVAE")
     parser.add_argument("--ais_method", type=str, default="SIS",choices=["AIS", "SIS"],help="Weight update method for FMCVAE: 'AIS' accumulates weights, 'SIS' normalizes at each step.")
-    parser.add_argument("--sampler_type", type=str, default="MALA",choices=["ULA", "MALA", "HMC"],
+    parser.add_argument("--sampler_type", type=str, default="HMC",choices=["ULA", "MALA", "HMC"],
                     help="Markov transition sampler type for FMCVAE: ULA, MALA, or HMC.")
     parser.add_argument("--flow_type", type=str, default="RealNVP")
 
@@ -150,7 +150,7 @@ if __name__ == '__main__':
         "fast_dev_run": False,
         "accelerator": "gpu",
         "devices": 1,
-        "max_epochs": 1  # 2 useless, try 20 maybe
+        "max_epochs": 10  # 2 useless, try 20 maybe
         # "terminate_on_nan": automatic_optimization,  # Remove or comment out this line
     }
     trainer = pl.Trainer(**trainer_kwargs)

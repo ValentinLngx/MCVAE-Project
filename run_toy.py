@@ -32,8 +32,8 @@ def generate_dataset(N, d=2, sigma=1.):
     return x
 
 
-def replace_enc_dec(model):
-    model.encoder_net = ToyEncoder()
+def replace_enc_dec(model, d):
+    model.encoder_net = ToyEncoder(d)
     model.decoder_net = ToyDecoder()
     model = model.to(device)
     return model
@@ -139,12 +139,13 @@ class ToyDataset(Dataset):
 
 
 class ToyEncoder(nn.Module):
-    def __init__(self, ):
+    def __init__(self, d):
         super().__init__()
+        self.d = d
         self.aux = nn.Parameter(torch.tensor(0., dtype=torch.float32))
 
     def forward(self, x):
-        return torch.zeros(x.shape[0], 2 * d, device=x.device, dtype=torch.float32) + self.aux * 0.
+        return torch.zeros(x.shape[0], 2 * self.d, device=x.device, dtype=torch.float32) + self.aux * 0.
 
 
 class ToyEncoder_VB(nn.Module):
@@ -182,6 +183,11 @@ def run_trainer(model, num_epoches=2):
     tb_logger = pl_loggers.TensorBoardLogger('lightning_logs/')
     trainer = pl.Trainer(logger=tb_logger, fast_dev_run=False, max_epochs=num_epoches)#, automatic_optimization=True, )
     trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+
+
+
+
+
 
 
 def compute_discrepancy(model):

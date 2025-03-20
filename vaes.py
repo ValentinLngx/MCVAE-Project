@@ -34,6 +34,9 @@ def repeat_data(x, n_samples):
     return x
 
 
+
+
+
 class Base(pl.LightningModule):
     '''
     Base class for all VAEs
@@ -155,6 +158,7 @@ class Base(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         output = self.step(batch)
+        self.log("val_loss", output[0], on_epoch=True, prog_bar=True)
         d = {"val_loss": output[0]}
         if self.current_epoch % 10 == 9:
             nll = self.evaluate_nll(
@@ -191,6 +195,7 @@ class Base(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         output = self.step(batch)
+        self.log("val_loss", output[0], on_epoch=True, prog_bar=True)
         d = {"val_loss": output[0]}
         # TODO: Bypass self.current_epoch here or 'dataset'
         if self.current_epoch % 10 == 9:
@@ -486,6 +491,7 @@ class BaseMCMC(Base):
 
     def validation_step(self, batch, batch_idx):
         output = self.step(batch)
+        self.log("val_loss", output[0], on_epoch=True, prog_bar=True)
         d = {"val_loss": output[0], "acceptance_rate": output[1].mean(1)}
         if self.current_epoch % 10 == 9:
             nll = self.evaluate_nll(batch=batch,
@@ -756,16 +762,13 @@ class LMCVAE(BaseMCMC):
 
     def validation_step(self, batch, batch_idx):
         output = self.step(batch)
+        self.log("val_loss", output[0], on_epoch=True, prog_bar=True)
         d = {"val_loss": output[0], "acceptance_rate": output[1].mean(1), "val_loss_score_match": output[2]}
         if self.current_epoch % 10 == 9:
             nll = self.evaluate_nll(batch=batch,
                                     beta=torch.linspace(0., 1., 5, device=batch[0].device, dtype=torch.float32))
             d.update({"nll": nll})
         return d
-
-
-
-
 
 
 class FMCVAE(pl.LightningModule):

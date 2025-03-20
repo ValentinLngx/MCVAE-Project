@@ -37,13 +37,25 @@ class MyDataset(Dataset):
             self.data = data
             self.labels = None
         self.binarize = binarize
+        self.reshape = reshape
+
         if isinstance(self.data, np.ndarray):
             self.shape_size = self.data.shape[-2]
         elif isinstance(self.data[0], str):
             self.shape_size = 64
+        #else:
+        #    self.shape_size = self.data[0][0].size()[-1]
         else:
-            self.shape_size = self.data[0][0].size()[-1]
-        self.reshape = reshape
+            if isinstance(self.data[0], torch.Tensor):
+                if self.data[0].dim() == 2:
+                    self.shape_size = self.data[0].shape[0]
+                elif self.data[0].dim() >= 3:
+                    self.shape_size = self.data[0].shape[-2]
+                else:
+                    self.shape_size = self.data[0].size()[-1]
+            else:
+                self.shape_size = self.data[0][0].size()[-1]
+        
 
     def __len__(self):
         return len(self.data)
@@ -53,15 +65,19 @@ class MyDataset(Dataset):
             sample, _ = self.data[item]
         else:
             sample = self.data[item]
+        
         if self.reshape:
             sample = Image.open(sample).convert("RGB")
             sample = transforms.Compose([
                 transforms.Resize((self.shape_size, self.shape_size)),
                 transforms.ToTensor(),
-                # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ])(sample)
         else:
-            sample = transforms.ToTensor()(sample)
+            if not isinstance(sample, torch.Tensor):
+                sample = transforms.ToTensor()(sample)
+            else:
+                if sample.dim() == 2:
+                    sample = sample.unsqueeze(0)
         if self.binarize:
             sample = torch.distributions.Bernoulli(probs=sample).sample()
         label = -1. if self.labels is None else self.labels[item]
