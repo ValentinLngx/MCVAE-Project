@@ -25,7 +25,7 @@ if __name__ == '__main__':
     #parser = pl.Trainer.add_argparse_args(parser)
     tb_logger = pl_loggers.TensorBoardLogger('lightning_logs/')
 
-    parser.add_argument("--model", default="IWAE",
+    parser.add_argument("--model", default="FMCVAE",
                         choices=["VAE", "IWAE", "AMCVAE", "LMCVAE", "VAE_with_flows", "FMCVAE"])
 
     ## Dataset params
@@ -33,7 +33,7 @@ if __name__ == '__main__':
     parser.add_argument("--binarize", type=str2bool, default=False)
     ## Training parameters
     parser.add_argument("--batch_size", default=512, type=int)
-    parser.add_argument("--val_batch_size", default=252, type=int)
+    parser.add_argument("--val_batch_size", default=128, type=int)
     parser.add_argument("--grad_skip_val", type=float, default=0.)
     parser.add_argument("--grad_clip_val", type=float, default=0.)
 
@@ -150,7 +150,7 @@ if __name__ == '__main__':
         "fast_dev_run": False,
         "accelerator": "gpu",
         "devices": 1,
-        "max_epochs": 10  # 2 useless, try 20 maybe
+        "max_epochs": 30  # number of epochs
         # "terminate_on_nan": automatic_optimization,  # Remove or comment out this line
     }
     trainer = pl.Trainer(**trainer_kwargs)
