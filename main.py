@@ -26,7 +26,7 @@ if __name__ == '__main__':
     #parser = pl.Trainer.add_argparse_args(parser)
     tb_logger = pl_loggers.TensorBoardLogger('lightning_logs/')
 
-    parser.add_argument("--model", default="FMCVAEWithDiffusion",
+    parser.add_argument("--model", default="FMCVAE",
                         choices=["VAE", "IWAE", "AMCVAE", "LMCVAE", "VAE_with_flows", "FMCVAE", "FMCVAEWithDiffusion"])
 
     ## Dataset params
@@ -71,7 +71,7 @@ if __name__ == '__main__':
     parser.add_argument("--sigma", type=float, default=1.)
 
     parser.add_argument("--num_flows", type=int, default=1)
-    parser.add_argument("--Kprime", type=int, default=3,help="Number of AIS/SIS steps for FMCVAE")
+    parser.add_argument("--Kprime", type=int, default=5,help="Number of AIS/SIS steps for FMCVAE")
     parser.add_argument("--ais_method", type=str, default="AIS",choices=["AIS", "SIS"],help="Weight update method for FMCVAE: 'AIS' accumulates weights, 'SIS' normalizes at each step.")
     parser.add_argument("--sampler_type", type=str, default="HMC",choices=["ULA", "MALA", "HMC"],
                     help="Markov transition sampler type for FMCVAE: ULA, MALA, or HMC.")
@@ -157,7 +157,7 @@ if __name__ == '__main__':
         "fast_dev_run": False,
         "accelerator": "gpu",
         "devices": 1,
-        "max_epochs": 10  # number of epochs
+        "max_epochs": 50  # number of epochs
         # "terminate_on_nan": automatic_optimization,  # Remove or comment out this line
     }
     trainer = pl.Trainer(**trainer_kwargs)
