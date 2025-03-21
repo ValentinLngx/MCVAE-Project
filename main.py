@@ -8,6 +8,7 @@ import torch.nn as nn
 
 from vaes import VAE, IWAE, AMCVAE, LMCVAE, VAE_with_flows, FMCVAE
 from utils import make_dataloaders, get_activations, str2bool
+from diffusion_decoder import FMCVAE_With_Diffusion
 
 import torch
 torch.set_float32_matmul_precision("high")
@@ -25,8 +26,8 @@ if __name__ == '__main__':
     #parser = pl.Trainer.add_argparse_args(parser)
     tb_logger = pl_loggers.TensorBoardLogger('lightning_logs/')
 
-    parser.add_argument("--model", default="VAE_with_flows",
-                        choices=["VAE", "IWAE", "AMCVAE", "LMCVAE", "VAE_with_flows", "FMCVAE"])
+    parser.add_argument("--model", default="FMCVAEWithDiffusion",
+                        choices=["VAE", "IWAE", "AMCVAE", "LMCVAE", "VAE_with_flows", "FMCVAE", "FMCVAEWithDiffusion"])
 
     ## Dataset params
     parser.add_argument("--dataset", default='fashionmnist', choices=['mnist', 'fashionmnist', 'cifar', 'omniglot', 'celeba'])
@@ -70,20 +71,19 @@ if __name__ == '__main__':
     parser.add_argument("--sigma", type=float, default=1.)
 
     parser.add_argument("--num_flows", type=int, default=1)
-    parser.add_argument("--Kprime", type=int, default=5,help="Number of AIS/SIS steps for FMCVAE")
-    parser.add_argument("--ais_method", type=str, default="SIS",choices=["AIS", "SIS"],help="Weight update method for FMCVAE: 'AIS' accumulates weights, 'SIS' normalizes at each step.")
+    parser.add_argument("--Kprime", type=int, default=3,help="Number of AIS/SIS steps for FMCVAE")
+    parser.add_argument("--ais_method", type=str, default="AIS",choices=["AIS", "SIS"],help="Weight update method for FMCVAE: 'AIS' accumulates weights, 'SIS' normalizes at each step.")
     parser.add_argument("--sampler_type", type=str, default="HMC",choices=["ULA", "MALA", "HMC"],
                     help="Markov transition sampler type for FMCVAE: ULA, MALA, or HMC.")
     parser.add_argument("--flow_type", type=str, default="RealNVP")
+
+    parser.add_argument("--diffusion_steps", type=int, default=5, help="Toy diffusion steps for the refiner.")
+    parser.add_argument("--diffusion_hidden_dim", type=int, default=128,help="Hidden dim in the toy diffusion refiner.")
 
     act_func = get_activations()
 
     args = parser.parse_args()
     print(args)
-
-    #act_func = activation_dict.get(args.act_func.lower())
-    #if act_func is None:
-    #    raise ValueError(f"Unknown activation function: {args.act_func}")
 
 
     kwargs = {'num_workers': 8, 'pin_memory': True}
@@ -138,6 +138,13 @@ if __name__ == '__main__':
             hidden_dim=args.hidden_dim, name="FMCVAE",flow_type=args.flow_type, num_flows=args.num_flows,
             net_type="conv",  dataset=args.dataset,specific_likelihood=None,sigma=1.0,
             Kprime=args.Kprime,sampler_type=args.sampler_type,sampler_step_size=args.step_size,ais_method=args.ais_method)
+    
+    elif args.model == "FMCVAEWithDiffusion":
+        model = FMCVAE_With_Diffusion(shape=image_shape, act_func=act_func[args.act_func],num_samples=args.num_samples,
+            hidden_dim=args.hidden_dim, name="FMCVAEWithDiffusion", flow_type=args.flow_type, num_flows=args.num_flows,
+            net_type="conv", dataset=args.dataset,specific_likelihood=None, sigma=1.0, Kprime=args.Kprime, sampler_type=args.sampler_type,
+            sampler_step_size=args.step_size, ais_method=args.ais_method,
+            diffusion_steps=args.diffusion_steps,  diffusion_hidden_dim=args.diffusion_hidden_dim)
 
     else:
         raise ValueError
@@ -167,7 +174,8 @@ if __name__ == '__main__':
 
     # Generate images by passing z through the model (or model.decoder, if you have a dedicated decoder)
     with torch.no_grad():
-        generated_images = model(z)
+        #generated_images = model(z)
+        generated_images = model.decode(z)
         # If the model outputs logits, apply a sigmoid activation to get values in [0,1]
         generated_images = torch.sigmoid(generated_images)
 
